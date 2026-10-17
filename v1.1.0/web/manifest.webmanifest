@@ -1,0 +1,13 @@
+{
+  "name": "Music Central",
+  "short_name": "Music Central",
+  "description": "Search free music, build playlists and listen offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f0c",
+  "theme_color": "#0b0f0c",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
