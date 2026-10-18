@@ -3,7 +3,7 @@
 'use strict';
 
 const Updates = (() => {
-  const MANIFEST_URL = 'https://raw.githubusercontent.com/glitchfests/music-central/HEAD/latest.json';
+  const MANIFEST_URL = 'https://raw.githubusercontent.com/glitchfests/music-central/main/latest.json';
   let found = null; // manifest of a newer version, once seen
 
   function isNewer(a, b) {

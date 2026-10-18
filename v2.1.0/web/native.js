@@ -7,6 +7,7 @@ const Native = (() => {
   const electron = window.MCNative || null;
   const cap = window.Capacitor?.isNativePlatform?.() ? window.Capacitor : null;
   const plugin = cap ? cap.registerPlugin('MediaControls') : null;
+  const spotify = cap ? cap.registerPlugin('SpotifyRemote') : null;
   const platform = electron ? 'windows' : cap ? 'android' : '';
 
   return {
@@ -32,6 +33,18 @@ const Native = (() => {
         return plugin.installUpdate({ url }).finally(() => Promise.resolve(sub).then(s => s.remove()));
       }
       return Promise.reject(new Error('Not available in the browser'));
+    },
+
+    // Android: Spotify songs play through the Spotify app in the background (App Remote SDK).
+    spotifyRemote: spotify && {
+      isInstalled: () => spotify.isInstalled().then(r => r.installed),
+      connect: (clientId, redirectUri) => spotify.connect({ clientId, redirectUri }),
+      play: uri => spotify.play({ uri }),
+      pause: () => spotify.pause(),
+      resume: () => spotify.resume(),
+      seek: sec => spotify.seek({ position: sec }),
+      onState: fn => spotify.addListener('state', fn),
+      onDisconnected: fn => spotify.addListener('disconnected', fn),
     },
 
     // Android media notification / lock screen. Windows gets this from navigator.mediaSession.

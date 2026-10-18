@@ -1,11 +1,11 @@
-// Music Central v2.0.1
+// Music Central v2.1.0
 // Searches free, legal music sources, keeps playlists on this device and
 // saves tracks to IndexedDB for offline listening. Spotify and YouTube live in accounts.js,
 // the app update check in updates.js and the Windows/Android bridge in native.js.
 'use strict';
 
 const APP_NAME = 'MusicCentral';
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.1.0';
 // 'windows' or 'android' when running as the installed app, '' in a browser.
 const NATIVE = Native.platform;
 const $ = sel => document.querySelector(sel);
@@ -384,9 +384,9 @@ async function playlistTracks(p) {
 }
 
 // ---------- Player ----------
-// A track plays through one of two engines: the <audio> element (streams and downloads) or
-// YouTube's embedded player, which is shown in the video panel while it plays. Spotify songs
-// play in the Spotify app (accounts.js), or as their linked free copy if they have one.
+// A track plays through one of three engines: the <audio> element (streams and downloads),
+// YouTube's embedded player (shown in the video panel while it plays) or Spotify (accounts.js adds
+// engines.spotify; Premium). A Spotify song with a linked free copy plays the copy instead.
 
 const yt = {
   player: null,
@@ -471,7 +471,7 @@ const player = {
   queue: [],      // track objects
   order: [],      // indices into queue, shuffled or not
   pos: -1,        // position in order
-  engine: null,   // 'audio' | 'youtube' | null
+  engine: null,   // 'audio' | 'youtube' | 'spotify' | null
   shuffle: settings.get('shuffle', false),
   repeat: settings.get('repeat', 'off'), // off | all | one
   objectUrl: null,
@@ -516,6 +516,26 @@ const player = {
     if (!t) return;
     const play = await this.playable(t);
     if (play.source === 'spotify') {
+      if (!navigator.onLine) {
+        toast(`"${t.title}" needs internet. Skipping.`);
+        return this.skipOfflineFrom(this.pos);
+      }
+      if (Accounts.spotify.canPlayInApp()) {
+        this.useEngine('spotify');
+        $('#videoPanel').hidden = true;
+        updateNowPlaying();
+        try {
+          await engines.spotify.load(play);
+          return;
+        } catch (err) {
+          if (this.current !== t) return; // moved on meanwhile
+          this.useEngine(null);
+          onPlayState(false);
+          toast(`Couldn't play here: ${err.message}`);
+          if (auto) return this.next(true, skips + 1);
+          return Accounts.spotify.play(t);
+        }
+      }
       if (auto) {
         if (skips >= this.order.length) return toast('Nothing in the queue can play here');
         toast(`Skipped "${t.title}": Spotify songs play in Spotify (or use ⋯ → Find free copy)`);
@@ -672,7 +692,7 @@ function syncMedia() {
 function updateNowPlaying() {
   const t = player.current;
   $('#npTitle').textContent = t ? t.title : 'Nothing playing';
-  $('#npArtist').textContent = t ? t.artist + (t.source === 'spotify' && !t.freeCopy ? ' · on Spotify' : '') : 'Search for something to play';
+  $('#npArtist').textContent = t ? t.artist + (t.source === 'spotify' && !t.freeCopy && !Accounts.spotify.canPlayInApp() ? ' · on Spotify' : '') : 'Search for something to play';
   $('#npArt').src = t?.art || 'icons/icon.svg';
   $('#npArt').onerror = () => { $('#npArt').onerror = null; $('#npArt').src = 'icons/icon.svg'; };
   $('#tCur').textContent = '0:00';
@@ -728,6 +748,7 @@ function setupPlayer() {
   vol.oninput = () => {
     audio.volume = vol.value;
     yt.player?.setVolume?.(Math.round(vol.value * 100));
+    Accounts.spotify.setVolume(Number(vol.value));
     settings.set('volume', Number(vol.value));
   };
 
@@ -766,9 +787,10 @@ function setupPlayer() {
     else if (e.action === 'seek') { player.seek(e.position); setTimeout(syncMedia, 300); }
   });
 
-  // YouTube videos only play while you can see them.
+  // YouTube videos pause when you leave the app on Android or switch browser tabs. On Windows they
+  // keep playing when the window is minimised, like in a browser window.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && player.engine === 'youtube') player.pause();
+    if (document.hidden && player.engine === 'youtube' && NATIVE !== 'windows') player.pause();
   });
 
   document.addEventListener('keydown', e => {

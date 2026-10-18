@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(MediaControlsPlugin.class);
+        registerPlugin(SpotifyRemotePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

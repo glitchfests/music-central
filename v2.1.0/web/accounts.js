@@ -4,7 +4,11 @@
 'use strict';
 
 const Accounts = (() => {
-  const SPOTIFY_SCOPES = 'playlist-read-private playlist-read-collaborative user-library-read user-read-playback-state user-modify-playback-state';
+  // "streaming" lets the app itself play songs (Premium); "app-remote-control" is for the Android Spotify app.
+  const SPOTIFY_SCOPES = 'playlist-read-private playlist-read-collaborative user-library-read user-read-playback-state user-modify-playback-state streaming user-read-email user-read-private app-remote-control';
+  // Shown in Settings: Spotify's Android SDK checks the app's package name and signing key fingerprint.
+  const ANDROID_PACKAGE = 'com.glitchfests.musiccentral';
+  const ANDROID_SHA1 = '84:11:19:84:1B:99:F4:41:68:C7:9B:DA:D6:43:DA:C6:6D:A2:E2:77';
   const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
   // Spotify's dashboard needs the exact redirect address, port included, so the apps always use this one.
   const SPOTIFY_PORT = 43821;
@@ -38,6 +42,8 @@ const Accounts = (() => {
     get clientId() { return settings.get('spotifyId', ''); },
     get connected() { return !!settings.get('tok.spotify', null); },
     get user() { return settings.get('spotifyUser', null); },
+    // Sign-ins from before 2.1.0 didn't ask for the "streaming" permission.
+    get canStream() { return (settings.get('tok.spotify', null)?.scope || '').split(' ').includes('streaming'); },
     webRedirect: () => location.origin + location.pathname,
 
     async connect() {
@@ -77,7 +83,7 @@ const Accounts = (() => {
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error_description || d.error || 'Spotify sign-in failed');
       const old = settings.get('tok.spotify', null) || {};
-      settings.set('tok.spotify', { access: d.access_token, refresh: d.refresh_token || old.refresh, expires: Date.now() + (d.expires_in - 60) * 1000 });
+      settings.set('tok.spotify', { access: d.access_token, refresh: d.refresh_token || old.refresh, scope: d.scope || old.scope || '', expires: Date.now() + (d.expires_in - 60) * 1000 });
     },
 
     async token() {
@@ -330,6 +336,176 @@ const Accounts = (() => {
 
   const services = { spotify, youtube };
 
+  // ---------- Playing Spotify songs inside Music Central ----------
+  // Windows (and Chrome/Edge): Spotify's Web Playback SDK makes the app its own Spotify player. This
+  // needs Widevine copy protection, which the Windows app gets from castLabs Electron.
+  // Android: the Spotify app plays in the background, controlled through the App Remote SDK.
+  // Either way it's a Premium-only feature. If it fails, the song plays on your Spotify device instead.
+
+  const webSdk = {
+    ready: null,
+    player: null,
+    deviceId: null,
+    broken: '',
+
+    init() {
+      if (this.ready) return this.ready;
+      this.ready = new Promise((resolve, reject) => {
+        const fail = msg => { this.broken = msg; this.ready = null; reject(new Error(msg)); };
+        const timer = setTimeout(() => fail("Spotify's player didn't start in time"), 25000);
+        const start = () => {
+          this.player?.disconnect();
+          const p = new Spotify.Player({
+            name: 'Music Central',
+            getOAuthToken: cb => spotify.token().then(cb, () => cb('')),
+            volume: Number(settings.get('volume', 1)),
+          });
+          p.addListener('ready', ({ device_id }) => { this.deviceId = device_id; clearTimeout(timer); resolve(); });
+          p.addListener('not_ready', () => { this.deviceId = null; });
+          p.addListener('initialization_error', ({ message }) => { clearTimeout(timer); fail(`This device can't play Spotify (${message})`); });
+          p.addListener('authentication_error', ({ message }) => { clearTimeout(timer); this.ready = null; reject(new Error(`Spotify sign-in problem: ${message}. Try reconnecting in Settings.`)); });
+          p.addListener('account_error', () => { clearTimeout(timer); fail('Playing Spotify inside the app needs Premium'); });
+          p.addListener('playback_error', ({ message }) => spotifyEngine.failed(message));
+          p.addListener('player_state_changed', st => {
+            if (!st) return;
+            const cur = st.track_window?.current_track;
+            spotifyEngine.onState({
+              uri: cur?.uri || '', linkedUri: cur?.linked_from?.uri || '',
+              paused: st.paused, position: st.position, duration: st.duration,
+              previous: (st.track_window?.previous_tracks || []).map(t => t.uri),
+            });
+          });
+          p.connect().then(ok => {
+            // Usually a sign-in problem rather than the device, so try again next time.
+            if (!ok) { clearTimeout(timer); this.ready = null; reject(new Error("Couldn't start Spotify's player. Try reconnecting Spotify in Settings.")); }
+          });
+          this.player = p;
+        };
+        if (window.Spotify?.Player) return start();
+        window.onSpotifyWebPlaybackSDKReady = start;
+        const sc = document.createElement('script');
+        sc.src = 'https://sdk.scdn.co/spotify-player.js';
+        sc.onerror = () => { clearTimeout(timer); this.ready = null; reject(new Error("Couldn't load Spotify's player")); };
+        document.head.appendChild(sc);
+      });
+      return this.ready;
+    },
+
+    async play(uri) {
+      await this.init();
+      await spotify.api(`/me/player/play?device_id=${encodeURIComponent(this.deviceId)}`, { method: 'PUT', body: JSON.stringify({ uris: [uri] }) });
+    },
+    pause: () => webSdk.player?.pause(),
+    resume: () => webSdk.player?.resume(),
+    seek: sec => webSdk.player?.seek(Math.round(sec * 1000)),
+    setVolume: v => webSdk.player?.setVolume(v),
+  };
+
+  const appRemote = {
+    connected: false,
+    listening: false,
+    async init() {
+      const r = Native.spotifyRemote;
+      if (!this.listening) {
+        this.listening = true;
+        r.onState(st => spotifyEngine.onState({ uri: st.uri, linkedUri: '', paused: st.paused, position: st.position, duration: st.duration, previous: [] }));
+        r.onDisconnected(() => { this.connected = false; });
+      }
+      if (this.connected) return;
+      if (!await r.isInstalled()) throw new Error('Install the Spotify app (and log in) to play Spotify songs here.');
+      await r.connect(spotify.clientId, SPOTIFY_APP_REDIRECT);
+      this.connected = true;
+    },
+    async play(uri) { await this.init(); await Native.spotifyRemote.play(uri); },
+    pause: () => Native.spotifyRemote.pause().catch(() => {}),
+    resume: () => Native.spotifyRemote.resume().catch(() => {}),
+    seek: sec => Native.spotifyRemote.seek(sec).catch(() => {}),
+    setVolume: () => {},
+  };
+
+  const spotifyEngine = {
+    expected: '',   // the song we asked Spotify to play
+    started: false, // Spotify has reported playing it
+    finished: false,
+    last: { paused: true, position: 0, duration: 0, at: 0 },
+    timer: null,
+
+    get backend() { return Native.spotifyRemote ? appRemote : webSdk; },
+
+    async load(t) {
+      this.expected = t.uri;
+      this.started = false;
+      this.finished = false;
+      this.last = { paused: true, position: 0, duration: (t.duration || 0) * 1000, at: performance.now() };
+      clearTimeout(this.watchdog);
+      await this.backend.play(t.uri);
+      // If Spotify accepted the request but nothing starts (e.g. it won't license this device), give up on in-app playback.
+      this.watchdog = setTimeout(() => { if (player.engine === 'spotify' && this.expected === t.uri && !this.started) this.failed('nothing started playing'); }, 12000);
+    },
+
+    onState(st) {
+      if (player.engine !== 'spotify' || !this.expected || this.finished) return;
+      const mine = st.uri === this.expected || st.linkedUri === this.expected;
+      if (!mine) {
+        // Spotify moved on to something else by itself: our song is over.
+        if (this.started || st.previous.includes(this.expected)) this.finish();
+        return;
+      }
+      const wasNearEnd = this.started && this.last.duration && this.last.position > this.last.duration - 5000;
+      if (st.paused && st.position === 0 && (wasNearEnd || st.previous.includes(this.expected))) return this.finish();
+      if (!st.paused || st.position > 0) this.started = true;
+      this.last = { paused: st.paused, position: st.position, duration: st.duration, at: performance.now() };
+      clearInterval(this.timer);
+      if (!st.paused) this.timer = setInterval(() => onTime(this.time(), this.duration()), 500);
+      onPlayState(!st.paused);
+      onTime(this.time(), this.duration());
+    },
+
+    finish() {
+      this.finished = true;
+      clearInterval(this.timer);
+      // Pause first so Spotify's autoplay doesn't carry on after our song, then move on.
+      Promise.resolve(this.backend.pause()).catch(() => {}).finally(() => player.next(true));
+    },
+
+    failed(message) {
+      if (player.engine !== 'spotify') return;
+      if (this.started || this.backend !== webSdk) return toast(`Spotify: ${message}`);
+      // Never got going: switch this device to playing on your Spotify app instead.
+      webSdk.broken = `Spotify wouldn't play here: ${message}`;
+      const t = player.current;
+      this.stop();
+      player.useEngine(null);
+      onPlayState(false);
+      toast(`${webSdk.broken}. Playing on your Spotify device instead.`);
+      if (t) spotify.play(t);
+    },
+
+    // engine interface used by the player
+    play() { this.backend.resume(); },
+    pause() { this.backend.pause(); },
+    seek(sec) { this.backend.seek(sec); this.last = { ...this.last, position: sec * 1000, at: performance.now() }; },
+    time() { return (this.last.position + (this.last.paused ? 0 : performance.now() - this.last.at)) / 1000; },
+    duration() { return this.last.duration / 1000; },
+    paused() { return this.last.paused; },
+    stop() {
+      clearInterval(this.timer);
+      clearTimeout(this.watchdog);
+      if (this.expected && !this.finished) this.backend.pause();
+      this.expected = '';
+    },
+  };
+  engines.spotify = spotifyEngine;
+
+  // Can this device play Spotify songs itself right now?
+  spotify.canPlayInApp = () => {
+    if (!spotify.connected || !spotify.user?.premium) return false;
+    if (Native.spotifyRemote) return true;
+    return spotify.canStream && !webSdk.broken && !!navigator.requestMediaKeySystemAccess;
+  };
+  spotify.inAppProblem = () => webSdk.broken;
+  spotify.setVolume = v => spotifyEngine.backend.setVolume(v);
+
   // Free-copy links are saved with the song; bring them back onto freshly fetched tracks.
   async function withLinks(tracks) {
     await Promise.all(tracks.map(async t => {
@@ -440,7 +616,13 @@ const Accounts = (() => {
   function statusLine(svc) {
     if (!svc.connected) return '<p class="muted small">Not connected.</p>';
     const u = svc.user;
-    const extra = svc.key === 'spotify' && u && !u.premium ? ' · no Premium: songs open in the Spotify app' : '';
+    let extra = '';
+    if (svc.key === 'spotify') {
+      if (u && !u.premium) extra = ' · no Premium: songs open in the Spotify app';
+      else if (!Native.spotifyRemote && !spotify.canStream) extra = '</p><p class="small" style="color:#ffc46b">Disconnect and connect again to let Music Central play Spotify songs itself (it needs one more permission).';
+      else if (spotify.inAppProblem()) extra = `</p><p class="small" style="color:#ffc46b">In-app playback isn't working on this device (${esc(spotify.inAppProblem())}), so songs play on your Spotify device instead.`;
+      else extra = Native.spotifyRemote ? ' · songs play through the Spotify app in the background' : ' · songs play inside Music Central';
+    }
     return `<p class="small" style="color:var(--accent)">Connected as ${esc(u?.name || 'you')}${extra}</p>`;
   }
 
@@ -449,12 +631,15 @@ const Accounts = (() => {
     const spRedirects = `<code>${esc(Native.canLoopbackAuth ? SPOTIFY_APP_REDIRECT : spotify.webRedirect())}</code>`;
     return `
       <h2>Spotify</h2>
-      <p class="muted">See your Spotify playlists and liked songs, search Spotify, and play songs in your Spotify app.</p>
+      <p class="muted">See your Spotify playlists and liked songs, search Spotify, and play Spotify songs right here (Premium).
+      ${Native.spotifyRemote ? 'On Android the Spotify app must be installed and logged in; it plays in the background while you stay here.' : ''}</p>
       <details class="notice small"><summary><b>How to get a Client ID</b> (one time, about 3 minutes)</summary>
         <ol>
           <li>Go to ${link('https://developer.spotify.com/dashboard', 'developer.spotify.com/dashboard')} and log in.</li>
           <li>Press <b>Create app</b>. Any name and description. Tick <b>Web API</b>.</li>
           <li>Under <b>Redirect URIs</b>, add ${spRedirects} exactly, and save.</li>
+          <li>For the Android app, also tick <b>Android</b> and add the package name <code>${ANDROID_PACKAGE}</code>
+            with the SHA1 fingerprint <code>${ANDROID_SHA1}</code>.</li>
           <li>Open the app's settings and copy the <b>Client ID</b> into the box below.</li>
         </ol>
         <p style="margin-bottom:0">Spotify's rules for personal developer apps: the account that creates the app needs <b>Premium</b>, and up to 5 people can use it.

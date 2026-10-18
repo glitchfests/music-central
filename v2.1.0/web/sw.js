@@ -1,6 +1,6 @@
 // Music Central service worker: keeps the app itself available offline.
 // Audio is stored by the app in IndexedDB, not here.
-const CACHE = 'music-central-v2.0.1';
+const CACHE = 'music-central-v2.1.0';
 const SHELL = ['./', 'index.html', 'style.css', 'capacitor.js', 'native.js', 'app.js', 'accounts.js', 'updates.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', e => {

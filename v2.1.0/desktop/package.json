@@ -1,7 +1,7 @@
 {
   "name": "music-central",
   "productName": "Music Central",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "Search free music, build playlists and listen offline.",
   "author": "glitchfests",
   "license": "MIT",
@@ -12,7 +12,7 @@
     "build:win": "electron-builder --win --x64"
   },
   "devDependencies": {
-    "electron": "44.5.1",
+    "electron": "github:castlabs/electron-releases#v44.5.1+wvcus",
     "electron-builder": "26.15.3"
   },
   "build": {
@@ -61,7 +61,12 @@
     "compression": "maximum",
     "electronLanguages": [
       "en-US"
-    ]
+    ],
+    "electronVersion": "44.5.1+wvcus",
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/"
+    },
+    "afterSign": "evs-sign.js"
   },
   "repository": {
     "type": "git",

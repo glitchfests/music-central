@@ -1,5 +1,5 @@
 // Music Central for Windows: runs the web app (../web) in its own window.
-const { app, BrowserWindow, protocol, net, shell, Menu, ipcMain, session } = require('electron');
+const { app, BrowserWindow, protocol, net, shell, Menu, ipcMain, session, components } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -32,7 +32,8 @@ function createWindow() {
     title: 'Music Central',
     autoHideMenuBar: true,
     icon: path.join(WEB_DIR, 'icons', 'icon.svg'),
-    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') },
+    // backgroundThrottling off: keep the queue moving while the window is minimised.
+    webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false, preload: path.join(__dirname, 'preload.js') },
   });
   win.loadURL('app://music-central/index.html');
 
@@ -50,7 +51,7 @@ app.on('second-instance', () => {
   if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   protocol.handle('app', req => {
     const { pathname } = new URL(req.url);
     const file = path.normalize(path.join(WEB_DIR, decodeURIComponent(pathname)));
@@ -67,6 +68,14 @@ app.whenReady().then(() => {
       details.requestHeaders.Referer = `https://${APP_ID}/`;
       cb({ requestHeaders: details.requestHeaders });
     });
+
+  // castLabs Electron fetches the Widevine module (Spotify's copy protection) on first run.
+  // Wait for it briefly; everything except in-app Spotify works without it.
+  try {
+    await Promise.race([components.whenReady(), new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), 15000))]);
+  } catch (err) {
+    console.warn('Widevine not ready:', err.message);
+  }
 
   createWindow();
 });
