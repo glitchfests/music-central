@@ -1,0 +1,6 @@
+{
+  "version": "2.0.0",
+  "notes": "Spotify and YouTube accounts, free copies of Spotify songs, music keeps playing in the background on Android, and update checks.",
+  "windows": "https://raw.githubusercontent.com/glitchfests/music-central/HEAD/v2.0.0/builds/MusicCentral-Setup-2.0.0.exe",
+  "android": "https://raw.githubusercontent.com/glitchfests/music-central/HEAD/v2.0.0/builds/MusicCentral-2.0.0.apk"
+}

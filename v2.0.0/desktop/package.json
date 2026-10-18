@@ -1,0 +1,70 @@
+{
+  "name": "music-central",
+  "productName": "Music Central",
+  "version": "2.0.0",
+  "description": "Search free music, build playlists and listen offline.",
+  "author": "glitchfests",
+  "license": "MIT",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.glitchfests.musiccentral",
+    "productName": "Music Central",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web",
+        "to": "web",
+        "filter": [
+          "**/*",
+          "!sw.js"
+        ]
+      }
+    ],
+    "icon": "../resources/icon-256.png",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "MusicCentral-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Music Central",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": null,
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/glitchfests/music-central.git"
+  }
+}
