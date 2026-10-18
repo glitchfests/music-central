@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f0c">
+  <meta name="description" content="Search free music, build playlists and listen offline.">
+  <title>Music Central</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <nav class="sidebar" aria-label="Main">
+      <div class="brand"><img src="icons/icon.svg" alt=""> Music Central</div>
+      <button class="nav-btn" data-view="search">Search</button>
+      <button class="nav-btn" data-view="library">Library</button>
+      <button class="nav-btn" data-view="downloads">Downloads</button>
+      <button class="nav-btn" data-view="settings">Settings</button>
+      <div class="offline-pill" id="offlinePill" hidden>Offline</div>
+    </nav>
+
+    <main class="main" id="main" tabindex="-1"></main>
+
+    <aside class="queue" id="queuePanel" hidden aria-label="Queue">
+      <header><h2>Up next</h2><button class="icon-btn" id="queueClose" aria-label="Close queue">✕</button></header>
+      <ol id="queueList"></ol>
+    </aside>
+  </div>
+
+  <footer class="player" aria-label="Player">
+    <div class="now">
+      <img id="npArt" class="art" alt="" src="icons/icon.svg">
+      <div class="np-text">
+        <div id="npTitle" class="np-title">Nothing playing</div>
+        <div id="npArtist" class="np-artist">Search for something to play</div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="buttons">
+        <button class="icon-btn" id="btnShuffle" aria-label="Shuffle" title="Shuffle">⤮</button>
+        <button class="icon-btn" id="btnPrev" aria-label="Previous" title="Previous">⏮</button>
+        <button class="play-btn" id="btnPlay" aria-label="Play">▶</button>
+        <button class="icon-btn" id="btnNext" aria-label="Next" title="Next">⏭</button>
+        <button class="icon-btn" id="btnRepeat" aria-label="Repeat" title="Repeat">↻</button>
+      </div>
+      <div class="seek">
+        <span id="tCur">0:00</span>
+        <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Seek">
+        <span id="tDur">0:00</span>
+      </div>
+    </div>
+    <div class="extra">
+      <button class="icon-btn" id="btnQueue" aria-label="Queue" title="Queue">☰</button>
+      <input type="range" id="volume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+    </div>
+  </footer>
+
+  <nav class="tabbar" aria-label="Main">
+    <button class="nav-btn" data-view="search">Search</button>
+    <button class="nav-btn" data-view="library">Library</button>
+    <button class="nav-btn" data-view="downloads">Downloads</button>
+    <button class="nav-btn" data-view="settings">Settings</button>
+  </nav>
+
+  <div class="video-panel" id="videoPanel" hidden>
+    <div class="video-head"><span>YouTube</span><button class="icon-btn" id="videoClose" aria-label="Stop video" title="Stop video">✕</button></div>
+    <div class="video-frame"><div id="ytFrame"></div></div>
+  </div>
+
+  <div class="update-banner" id="updateBanner" role="status" hidden></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="menu" id="menu" hidden></div>
+  <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+  <audio id="audio" preload="metadata"></audio>
+
+  <script src="capacitor.js"></script>
+  <script src="native.js"></script>
+  <script src="app.js"></script>
+  <script src="accounts.js"></script>
+  <script src="updates.js"></script>
+</body>
+</html>
