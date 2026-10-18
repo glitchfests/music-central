@@ -1,6 +1,6 @@
 {
-  "version": "2.0.1",
-  "notes": "Fixes Spotify sign-in: the redirect address is now http://127.0.0.1:43821/callback (with a port), which Spotify's dashboard accepts.",
-  "windows": "https://raw.githubusercontent.com/glitchfests/music-central/main/v2.0.1/builds/MusicCentral-Setup-2.0.1.exe",
-  "android": "https://raw.githubusercontent.com/glitchfests/music-central/main/v2.0.1/builds/MusicCentral-2.0.1.apk"
+  "version": "2.1.0",
+  "notes": "Spotify songs now play inside Music Central (Premium). After updating, disconnect and reconnect Spotify in Settings once.",
+  "windows": "https://raw.githubusercontent.com/glitchfests/music-central/main/v2.1.0/builds/MusicCentral-Setup-2.1.0.exe",
+  "android": "https://raw.githubusercontent.com/glitchfests/music-central/main/v2.1.0/builds/MusicCentral-2.1.0.apk"
 }
